@@ -13,6 +13,15 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   if (!extractorUrl) {
     return NextResponse.json({ error: "FASTAPI_EXTRACTOR_URL is not configured" }, { status: 500 });
   }
+  if (extractorUrl.includes("localhost") || extractorUrl.includes("127.0.0.1")) {
+    return NextResponse.json(
+      {
+        error:
+          "FASTAPI_EXTRACTOR_URL points to localhost. In Vercel this must be a public HTTPS URL for your deployed extractor service."
+      },
+      { status: 500 }
+    );
+  }
 
   const { data: doc, error: docError } = await supabase
     .from("documents")
@@ -52,7 +61,11 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Extractor request failed";
+    const rawMessage = error instanceof Error ? error.message : "Extractor request failed";
+    const message =
+      rawMessage.toLowerCase().includes("fetch failed")
+        ? `Extractor unreachable. Verify FASTAPI_EXTRACTOR_URL (${extractorUrl}) is a live public HTTPS endpoint.`
+        : rawMessage;
     await supabase.from("documents").update({ status: "error", extracted_json: { error: message } }).eq("id", docId);
     return NextResponse.json({ error: message }, { status: 502 });
   }
