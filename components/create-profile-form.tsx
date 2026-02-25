@@ -43,6 +43,7 @@ export function CreateProfileForm({ onCreated }: Props) {
       setLoading(false);
       return;
     }
+    const data = await res.json().catch(() => ({}));
     setLoading(false);
     setFullName("");
     setRelationship("dad");
@@ -50,7 +51,11 @@ export function CreateProfileForm({ onCreated }: Props) {
     setSex("");
     setNotes("");
     onCreated?.();
-    router.refresh();
+    if (data.id) {
+      router.push(`/profiles/${data.id}/timeline`);
+    } else {
+      router.refresh();
+    }
   }
 
   return (
