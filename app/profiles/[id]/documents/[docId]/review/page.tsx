@@ -7,7 +7,7 @@ export default async function DocumentReviewPage({ params }: { params: Promise<{
   const { supabase, role } = await requireProfileRole(id);
 
   const [{ data: doc }, { data: observations }] = await Promise.all([
-    supabase.from("documents").select("id, storage_path").eq("profile_id", id).eq("id", docId).single(),
+    supabase.from("documents").select("id, storage_path, status, extracted_json").eq("profile_id", id).eq("id", docId).single(),
     supabase
       .from("observations")
       .select("id, name, effective_datetime, value_number, value_text, unit, reference_low, reference_high, flagged, extraction_confidence, status")
@@ -23,6 +23,16 @@ export default async function DocumentReviewPage({ params }: { params: Promise<{
   return (
     <div>
       <ProfileNav profileId={id} current="documents" />
+      {doc?.status === "extracting" ? (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Document is currently extracting. You can still edit rows manually and save.
+        </p>
+      ) : null}
+      {doc?.status === "error" ? (
+        <p className="mb-3 text-xs text-destructive">
+          Extraction failed. Return to Documents and click Run/Retry Extraction, or continue manual entry here.
+        </p>
+      ) : null}
       <DocumentReviewEditor
         profileId={id}
         docId={docId}

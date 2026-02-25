@@ -15,7 +15,7 @@ export default async function ProfilesPage() {
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <Card>
         <CardHeader>
-          <CardTitle>Profiles</CardTitle>
+          <CardTitle>My Family</CardTitle>
           <p className="text-sm text-muted-foreground">Select an existing profile or create one for Dad/Mom/family.</p>
         </CardHeader>
         <CardContent className="space-y-3">

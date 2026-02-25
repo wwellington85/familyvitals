@@ -4,6 +4,7 @@ import { requireProfileRole } from "@/lib/auth";
 
 const schema = z.object({
   medication_name: z.string().min(1),
+  item_type: z.enum(["medication", "supplement"]).default("medication"),
   start_dosage: z.string().nullable().optional(),
   start_frequency: z.string().nullable().optional()
 });
@@ -18,7 +19,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const body = schema.parse(await req.json());
   const { data: med, error: medError } = await supabase
     .from("medications")
-    .insert({ profile_id: id, medication_name: body.medication_name })
+    .insert({ profile_id: id, medication_name: body.medication_name, item_type: body.item_type })
     .select("id")
     .single();
 

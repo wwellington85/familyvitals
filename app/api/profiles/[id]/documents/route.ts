@@ -55,7 +55,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ document_id: doc.id, signed_pdf_url: signed.data.signedUrl })
-    }).catch(() => null);
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => "Extraction failed");
+          await supabase
+            .from("documents")
+            .update({ status: "error", extracted_json: { error: text.slice(0, 500) } })
+            .eq("id", doc.id);
+        }
+      })
+      .catch(async (err) => {
+        await supabase
+          .from("documents")
+          .update({ status: "error", extracted_json: { error: err instanceof Error ? err.message : "Extractor request failed" } })
+          .eq("id", doc.id);
+      });
   }
 
   return NextResponse.json({ id: doc.id });

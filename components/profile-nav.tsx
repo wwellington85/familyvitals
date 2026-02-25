@@ -14,6 +14,12 @@ const links = [
 export function ProfileNav({ profileId, current }: { profileId: string; current: string }) {
   return (
     <div className="mb-5 flex flex-wrap gap-2">
+      <Link
+        href={"/profiles" as Route}
+        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+      >
+        My Family
+      </Link>
       {links.map(([label, path]) => {
         const href = `/profiles/${profileId}/${path}` as Route;
         return (
