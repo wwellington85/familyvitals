@@ -13,6 +13,7 @@ type Props = {
 
 export function CreateProfileForm({ onCreated }: Props) {
   const [fullName, setFullName] = useState("");
+  const [relationship, setRelationship] = useState("dad");
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [notes, setNotes] = useState("");
@@ -24,10 +25,17 @@ export function CreateProfileForm({ onCreated }: Props) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    const relationshipNote = relationship ? `Relationship: ${relationship}` : "";
+    const mergedNotes = [relationshipNote, notes].filter(Boolean).join("\n");
     const res = await fetch("/api/profiles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ full_name: fullName, birth_date: birthDate || null, sex: sex || null, notes: notes || null })
+      body: JSON.stringify({
+        full_name: fullName,
+        birth_date: birthDate || null,
+        sex: sex || null,
+        notes: mergedNotes || null
+      })
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -37,6 +45,7 @@ export function CreateProfileForm({ onCreated }: Props) {
     }
     setLoading(false);
     setFullName("");
+    setRelationship("dad");
     setBirthDate("");
     setSex("");
     setNotes("");
@@ -46,10 +55,27 @@ export function CreateProfileForm({ onCreated }: Props) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-border bg-card p-4">
-      <h3 className="text-sm font-semibold">Create Profile</h3>
+      <h3 className="text-sm font-semibold">Create Family Profile</h3>
+      <p className="text-xs text-muted-foreground">Create a profile for Dad, Mom, yourself, or another family member.</p>
       <div>
         <Label>Full name</Label>
-        <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+        <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="e.g., Robert Wellington" />
+      </div>
+      <div>
+        <Label>Relationship</Label>
+        <select
+          value={relationship}
+          onChange={(e) => setRelationship(e.target.value)}
+          className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+        >
+          <option value="dad">Dad</option>
+          <option value="mom">Mom</option>
+          <option value="self">Self</option>
+          <option value="sibling">Sibling</option>
+          <option value="spouse">Spouse</option>
+          <option value="child">Child</option>
+          <option value="other">Other</option>
+        </select>
       </div>
       <div>
         <Label>Birth date</Label>

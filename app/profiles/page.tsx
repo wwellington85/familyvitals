@@ -16,6 +16,7 @@ export default async function ProfilesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Profiles</CardTitle>
+          <p className="text-sm text-muted-foreground">Select an existing profile or create one for Dad/Mom/family.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {(data ?? []).map((row: any) => {
