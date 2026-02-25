@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -14,7 +15,7 @@ export function ProfileNav({ profileId, current }: { profileId: string; current:
   return (
     <div className="mb-5 flex flex-wrap gap-2">
       {links.map(([label, path]) => {
-        const href = `/profiles/${profileId}/${path}`;
+        const href = `/profiles/${profileId}/${path}` as Route;
         return (
           <Link
             key={path}
