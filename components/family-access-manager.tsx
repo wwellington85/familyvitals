@@ -13,28 +13,52 @@ type Member = {
   role: "owner" | "editor" | "viewer";
 };
 
+type Invite = {
+  id: string;
+  email: string;
+  role: "owner" | "editor" | "viewer";
+  status: "pending" | "accepted" | "revoked" | "expired";
+  invite_token: string;
+  expires_at: string;
+};
+
 export function FamilyAccessManager({ profileId }: { profileId: string }) {
   const [members, setMembers] = useState<Member[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"owner" | "editor" | "viewer">("viewer");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function loadMembers() {
     setLoading(true);
     setError(null);
+    setNotice(null);
 
-    const res = await fetch(`/api/profiles/${profileId}/sharing`, { cache: "no-store" });
-    const body = await res.json().catch(() => ({}));
+    const [sharingRes, inviteRes] = await Promise.all([
+      fetch(`/api/profiles/${profileId}/sharing`, { cache: "no-store" }),
+      fetch(`/api/profiles/${profileId}/invites`, { cache: "no-store" })
+    ]);
 
-    if (!res.ok) {
-      setError(body.error ?? "Failed to load family members");
+    const sharingBody = await sharingRes.json().catch(() => ({}));
+    const inviteBody = await inviteRes.json().catch(() => ({}));
+
+    if (!sharingRes.ok) {
+      setError(sharingBody.error ?? "Failed to load family members");
       setLoading(false);
       return;
     }
 
-    setMembers((body.members ?? []).map((m: any) => ({ user_id: m.user_id, email: m.email, role: m.role })));
+    if (!inviteRes.ok) {
+      setError(inviteBody.error ?? "Failed to load invites");
+      setLoading(false);
+      return;
+    }
+
+    setMembers((sharingBody.members ?? []).map((m: any) => ({ user_id: m.user_id, email: m.email, role: m.role })));
+    setInvites(inviteBody.invites ?? []);
     setLoading(false);
   }
 
@@ -48,7 +72,7 @@ export function FamilyAccessManager({ profileId }: { profileId: string }) {
     setSaving(true);
     setError(null);
 
-    const res = await fetch(`/api/profiles/${profileId}/access`, {
+    const res = await fetch(`/api/profiles/${profileId}/invites`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, role })
@@ -56,9 +80,15 @@ export function FamilyAccessManager({ profileId }: { profileId: string }) {
 
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setError(body.error ?? "Failed to add member");
+      setError(body.error ?? "Failed to send invite");
       setSaving(false);
       return;
+    }
+
+    if (body.emailed) {
+      setNotice(`Invite sent to ${email}.`);
+    } else if (body.invite_url) {
+      setNotice(`Email was not sent automatically. Copy and send this link: ${body.invite_url}`);
     }
 
     setEmail("");
@@ -85,6 +115,28 @@ export function FamilyAccessManager({ profileId }: { profileId: string }) {
     await loadMembers();
   }
 
+  async function revokeInvite(inviteId: string) {
+    setError(null);
+    const confirmed = window.confirm("Revoke this pending invite?");
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/profiles/${profileId}/invites?invite_id=${encodeURIComponent(inviteId)}`, {
+      method: "DELETE"
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(body.error ?? "Failed to revoke invite");
+      return;
+    }
+    await loadMembers();
+  }
+
+  async function copyInviteLink(token: string) {
+    const inviteUrl = `${window.location.origin}/accept-invite?token=${token}`;
+    await navigator.clipboard.writeText(inviteUrl);
+    setNotice("Invite link copied.");
+  }
+
   return (
     <Card className="mt-5">
       <CardHeader>
@@ -92,7 +144,7 @@ export function FamilyAccessManager({ profileId }: { profileId: string }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Add family members by email after they create an account at login. Role controls edit rights.
+          Send invite emails to family members. They can accept from the link and join this profile.
         </p>
 
         <form onSubmit={onInvite} className="grid gap-3 rounded border border-border p-3 md:grid-cols-[1fr_160px_auto]">
@@ -119,16 +171,37 @@ export function FamilyAccessManager({ profileId }: { profileId: string }) {
             </select>
           </div>
           <div className="flex items-end">
-            <Button type="submit" disabled={saving || !email}>{saving ? "Adding..." : "Add Member"}</Button>
+            <Button type="submit" disabled={saving || !email}>{saving ? "Sending..." : "Send Invite"}</Button>
           </div>
         </form>
 
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        {notice ? <p className="text-xs text-primary">{notice}</p> : null}
 
         {loading ? <p className="text-sm text-muted-foreground">Loading members...</p> : null}
 
         {!loading ? (
           <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Pending Invites</h4>
+            {invites.filter((inv) => inv.status === "pending").length === 0 ? (
+              <p className="text-xs text-muted-foreground">No pending invites.</p>
+            ) : null}
+            {invites
+              .filter((inv) => inv.status === "pending")
+              .map((invite) => (
+                <div key={invite.id} className="flex items-center justify-between rounded border border-border p-2">
+                  <div>
+                    <p className="text-sm font-medium">{invite.email}</p>
+                    <p className="text-xs text-muted-foreground">Role: {invite.role} • Expires: {new Date(invite.expires_at).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => copyInviteLink(invite.invite_token)}>Copy Link</Button>
+                    <Button size="sm" variant="outline" onClick={() => revokeInvite(invite.id)}>Revoke</Button>
+                  </div>
+                </div>
+              ))}
+
+            <h4 className="pt-2 text-sm font-semibold">Current Members</h4>
             {members.map((member) => (
               <div key={member.user_id} className="flex items-center justify-between rounded border border-border p-2">
                 <div>
