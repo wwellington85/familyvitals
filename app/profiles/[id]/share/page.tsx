@@ -1,6 +1,7 @@
 import { requireProfileRole } from "@/lib/auth";
 import { ProfileNav } from "@/components/profile-nav";
 import { GenerateSnapshot } from "@/components/generate-snapshot";
+import { SharingControls } from "@/components/sharing-controls";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function SharePage({ params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +19,7 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
     <div>
       <ProfileNav profileId={id} current="share" />
       {role === "owner" ? <GenerateSnapshot profileId={id} /> : <p className="text-sm">Only owner can create snapshots.</p>}
+      {role === "owner" ? <SharingControls profileId={id} /> : null}
       <Card className="mt-5">
         <CardHeader><CardTitle>Recent Snapshots</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">

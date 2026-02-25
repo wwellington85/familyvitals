@@ -15,6 +15,7 @@ FamilyVitals is a full-stack health hub MVP built with:
 - Editable extracted observations with confidence indicators
 - Manual vitals entry + charts
 - Medication timeline with event history and active/inactive status
+- Owner sharing controls for section-level family visibility (`documents`, `labs`, `vitals`, `medications`, `snapshots`, `insights`)
 - Doctor Snapshot generation with:
   - expiring share token
   - private snapshot PDF stored in Supabase Storage
@@ -53,7 +54,9 @@ Use `services/extractor/.env.example`:
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Run the SQL migration in `supabase/migrations/202602250001_init_family_vitals.sql`.
+2. Run SQL migrations in order:
+   - `supabase/migrations/202602250001_init_family_vitals.sql`
+   - `supabase/migrations/202602250002_profile_section_permissions.sql`
 3. Confirm bucket `health_docs` exists and is private.
 4. In Auth settings, enable email/password sign-in.
 
