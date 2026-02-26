@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireProfileRole } from "@/lib/auth";
 
-export async function POST(_: Request, { params }: { params: Promise<{ id: string; docId: string }> }) {
+const schema = z.object({
+  mode: z.enum(["auto", "ai", "regex"]).default("auto")
+});
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string; docId: string }> }) {
   const { id, docId } = await params;
   const { supabase, role } = await requireProfileRole(id);
+  const parsed = schema.safeParse(await req.json().catch(() => ({ mode: "auto" })));
+  const mode = parsed.success ? parsed.data.mode : "auto";
 
   if (role === "viewer") {
     return NextResponse.json({ error: "Viewer cannot extract documents" }, { status: 403 });
@@ -47,7 +54,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     const extractorRes = await fetch(`${extractorUrl}/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ document_id: docId, signed_pdf_url: signedUrl })
+      body: JSON.stringify({ document_id: docId, signed_pdf_url: signedUrl, extraction_mode: mode })
     });
 
     if (!extractorRes.ok) {

@@ -43,6 +43,7 @@ DATE_REGEX = re.compile(r"(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})")
 class ExtractRequest(BaseModel):
     document_id: str
     signed_pdf_url: HttpUrl
+    extraction_mode: str | None = "auto"
 
 
 def download_pdf(url: str) -> bytes:
@@ -290,15 +291,33 @@ def extract(req: ExtractRequest):
         pdf_bytes = download_pdf(str(req.signed_pdf_url))
         text = extract_text(pdf_bytes)
         effective_datetime = infer_effective_datetime(text, document.get("collected_at"), document.get("created_at"))
+        mode_requested = (req.extraction_mode or "auto").lower()
         ai_rows: list[dict[str, Any]] = []
         ai_raw_json: str | None = None
         ai_error: str | None = None
-        try:
-            ai_rows, ai_raw_json = ai_extract_rows(text, effective_datetime)
-        except Exception as exc:
-            ai_error = str(exc)
+        method = "regex"
 
-        rows = ai_rows if ai_rows else parse_rows(text, effective_datetime)
+        if mode_requested == "ai":
+            if not openai_client:
+                raise HTTPException(status_code=400, detail="AI extraction unavailable: OPENAI_API_KEY is not configured")
+            ai_rows, ai_raw_json = ai_extract_rows(text, effective_datetime)
+            rows = ai_rows
+            method = "ai"
+        elif mode_requested == "regex":
+            rows = parse_rows(text, effective_datetime)
+            method = "regex"
+        else:
+            try:
+                ai_rows, ai_raw_json = ai_extract_rows(text, effective_datetime)
+            except Exception as exc:
+                ai_error = str(exc)
+
+            if ai_rows:
+                rows = ai_rows
+                method = "ai"
+            else:
+                rows = parse_rows(text, effective_datetime)
+                method = "regex"
 
         supabase.table("observations").delete().eq("source_document_id", req.document_id).execute()
 
@@ -314,7 +333,8 @@ def extract(req: ExtractRequest):
             supabase.table("observations").insert(payload).execute()
 
         extracted_json = {
-            "method": "ai" if ai_rows else "regex",
+            "mode_requested": mode_requested,
+            "method": method,
             "ai_error": ai_error,
             "ai_raw_json_excerpt": (ai_raw_json or "")[:8000],
             "effective_datetime": effective_datetime,

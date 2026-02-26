@@ -23,6 +23,9 @@ export default async function DocumentReviewPage({ params }: { params: Promise<{
   return (
     <div>
       <ProfileNav profileId={id} current="documents" />
+      {doc?.extracted_json?.method ? (
+        <p className="mb-2 text-xs text-muted-foreground">Extraction method: {String(doc.extracted_json.method).toUpperCase()}</p>
+      ) : null}
       {doc?.status === "extracting" ? (
         <p className="mb-3 text-xs text-muted-foreground">
           Document is currently extracting. You can still edit rows manually and save.

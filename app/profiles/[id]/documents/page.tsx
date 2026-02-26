@@ -7,7 +7,11 @@ import { DocumentsList } from "@/components/documents-list";
 export default async function DocumentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase, role } = await requireProfileRole(id);
-  const { data: docs } = await supabase.from("documents").select("id, filename, status, created_at, doc_type").eq("profile_id", id).order("created_at", { ascending: false });
+  const { data: docs } = await supabase
+    .from("documents")
+    .select("id, filename, status, created_at, doc_type, extracted_json")
+    .eq("profile_id", id)
+    .order("created_at", { ascending: false });
 
   return (
     <div>
