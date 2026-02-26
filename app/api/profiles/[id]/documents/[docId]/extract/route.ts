@@ -52,11 +52,22 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
     if (!extractorRes.ok) {
       const text = await extractorRes.text();
+      let message = text.slice(0, 500);
+      try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed?.detail === "string") {
+          message = parsed.detail;
+        } else if (typeof parsed?.error === "string") {
+          message = parsed.error;
+        }
+      } catch {
+        // keep raw text
+      }
       await supabase
         .from("documents")
-        .update({ status: "error", extracted_json: { error: `Extractor failed: ${text.slice(0, 500)}` } })
+        .update({ status: "error", extracted_json: { error: `Extractor failed: ${message}` } })
         .eq("id", docId);
-      return NextResponse.json({ error: "Extraction failed" }, { status: 502 });
+      return NextResponse.json({ error: `Extraction failed: ${message}` }, { status: 502 });
     }
 
     return NextResponse.json({ ok: true });

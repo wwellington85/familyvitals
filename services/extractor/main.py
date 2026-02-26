@@ -47,22 +47,39 @@ def download_pdf(url: str) -> bytes:
 
 
 def extract_text(pdf_bytes: bytes) -> str:
+    warnings: list[str] = []
     texts: list[str] = []
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-      for page in pdf.pages:
-          page_text = page.extract_text() or ""
-          if page_text.strip():
-              texts.append(page_text)
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    texts.append(page_text)
+    except Exception as exc:
+        warnings.append(f"pdfplumber failed: {exc}")
 
     full_text = "\n".join(texts).strip()
     if len(full_text) > 200:
         return full_text
 
-    ocr_pages = convert_from_bytes(pdf_bytes, dpi=220)
-    ocr_texts: list[str] = []
-    for image in ocr_pages:
-        ocr_texts.append(pytesseract.image_to_string(image))
-    return "\n".join(ocr_texts)
+    try:
+        ocr_pages = convert_from_bytes(pdf_bytes, dpi=220)
+        ocr_texts: list[str] = []
+        for image in ocr_pages:
+            ocr_texts.append(pytesseract.image_to_string(image))
+        ocr_text = "\n".join(ocr_texts).strip()
+        if ocr_text:
+            return ocr_text
+    except Exception as exc:
+        warnings.append(f"ocr failed: {exc}")
+
+    if full_text:
+        return full_text
+
+    if warnings:
+        return "\n".join(warnings)
+
+    return ""
 
 
 def infer_effective_datetime(text: str, collected_at: str | None, created_at: str | None) -> str:
