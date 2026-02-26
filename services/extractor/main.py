@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 from datetime import datetime, timezone
 from typing import Any
 
+from openai import OpenAI
 import pdfplumber
 import pytesseract
 import requests
@@ -24,6 +26,9 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 LAB_ROW_REGEX = re.compile(
     r"^(?P<name>[A-Za-z][A-Za-z0-9\-\s\(\)/%]+?)\s+"
@@ -159,6 +164,105 @@ def parse_rows(text: str, effective_datetime: str) -> list[dict[str, Any]]:
     return rows
 
 
+def ai_extract_rows(text: str, effective_datetime: str) -> tuple[list[dict[str, Any]], str | None]:
+    if not openai_client:
+        return [], None
+
+    prompt = (
+        "Extract lab results from this medical PDF text.\n"
+        "Return ONLY valid JSON with shape:\n"
+        "{ \"observations\": [ { "
+        "\"name\": string, "
+        "\"value_number\": number|null, "
+        "\"value_text\": string|null, "
+        "\"unit\": string|null, "
+        "\"reference_low\": number|null, "
+        "\"reference_high\": number|null, "
+        "\"flagged\": \"H\"|\"L\"|\"N\"|\"U\", "
+        "\"confidence\": number "
+        "} ] }\n"
+        "Rules:\n"
+        "- confidence must be 0..1\n"
+        "- include all likely lab analytes, even if partial\n"
+        "- use null when missing\n"
+        "- do not include anything except JSON"
+    )
+
+    resp = openai_client.chat.completions.create(
+        model=OPENAI_MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise medical lab extraction engine."},
+            {"role": "user", "content": f"{prompt}\n\nPDF TEXT:\n{text[:24000]}"},
+        ],
+    )
+
+    raw = (resp.choices[0].message.content or "").strip()
+    parsed = json.loads(raw)
+    candidates = parsed.get("observations", [])
+
+    rows: list[dict[str, Any]] = []
+    for item in candidates:
+        name = str(item.get("name", "")).strip()
+        if not name:
+            continue
+
+        flagged = str(item.get("flagged", "U")).upper()
+        if flagged not in {"H", "L", "N", "U"}:
+            flagged = "U"
+
+        confidence_raw = item.get("confidence", 0.6)
+        try:
+            confidence = float(confidence_raw)
+        except Exception:
+            confidence = 0.6
+        confidence = max(0.0, min(confidence, 0.99))
+
+        value_number = item.get("value_number")
+        try:
+            value_number = float(value_number) if value_number is not None else None
+        except Exception:
+            value_number = None
+
+        reference_low = item.get("reference_low")
+        try:
+            reference_low = float(reference_low) if reference_low is not None else None
+        except Exception:
+            reference_low = None
+
+        reference_high = item.get("reference_high")
+        try:
+            reference_high = float(reference_high) if reference_high is not None else None
+        except Exception:
+            reference_high = None
+
+        value_text = item.get("value_text")
+        value_text = str(value_text).strip() if value_text is not None else None
+        if value_number is not None:
+            value_text = None
+
+        unit = item.get("unit")
+        unit = str(unit).strip() if unit is not None else None
+
+        rows.append(
+            {
+                "category": "lab",
+                "name": name,
+                "effective_datetime": effective_datetime,
+                "value_number": value_number,
+                "value_text": value_text,
+                "unit": unit,
+                "reference_low": reference_low,
+                "reference_high": reference_high,
+                "flagged": flagged,
+                "status": "extracted",
+                "extraction_confidence": confidence,
+            }
+        )
+
+    return rows, raw
+
+
 def update_document_status(document_id: str, status: str, extracted_json: dict[str, Any] | None = None) -> None:
     payload: dict[str, Any] = {"status": status}
     if extracted_json is not None:
@@ -186,7 +290,15 @@ def extract(req: ExtractRequest):
         pdf_bytes = download_pdf(str(req.signed_pdf_url))
         text = extract_text(pdf_bytes)
         effective_datetime = infer_effective_datetime(text, document.get("collected_at"), document.get("created_at"))
-        rows = parse_rows(text, effective_datetime)
+        ai_rows: list[dict[str, Any]] = []
+        ai_raw_json: str | None = None
+        ai_error: str | None = None
+        try:
+            ai_rows, ai_raw_json = ai_extract_rows(text, effective_datetime)
+        except Exception as exc:
+            ai_error = str(exc)
+
+        rows = ai_rows if ai_rows else parse_rows(text, effective_datetime)
 
         supabase.table("observations").delete().eq("source_document_id", req.document_id).execute()
 
@@ -202,6 +314,9 @@ def extract(req: ExtractRequest):
             supabase.table("observations").insert(payload).execute()
 
         extracted_json = {
+            "method": "ai" if ai_rows else "regex",
+            "ai_error": ai_error,
+            "ai_raw_json_excerpt": (ai_raw_json or "")[:8000],
             "effective_datetime": effective_datetime,
             "rows": rows,
             "text_excerpt": text[:8000],

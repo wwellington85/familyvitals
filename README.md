@@ -50,6 +50,8 @@ Use `services/extractor/.env.example`:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY` (optional but recommended for AI-assisted lab extraction)
+- `OPENAI_MODEL` (optional, default `gpt-4.1-mini`)
 
 ## Supabase Setup
 
